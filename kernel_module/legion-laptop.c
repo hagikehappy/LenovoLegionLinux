@@ -98,6 +98,12 @@ MODULE_PARM_DESC(
 	enable_platformprofile,
 	"Enable the platform profile sysfs API to read and write the power mode.");
 
+static bool debug_output;
+module_param(debug_output, bool, 0440);
+MODULE_PARM_DESC(
+	debug_output,
+	"Enable verbose debug output for WMI calls and DMI matching.");
+
 // TODO: remove this?
 #define LEGIONFEATURES \
 	"fancurve powermode platformprofile platformprofilenotify minifancurve fancurve_pmw_speed fancurve_rpm_speed"
@@ -1030,6 +1036,19 @@ static const struct model_config model_nrcn = {
 static const struct dmi_system_id denylist[] = { {} };
 
 static const struct dmi_system_id optimistic_allowlist[] = {
+	/*
+	{
+		// Template for 2023 models (Gen 8) like Y9000P
+		// Replace "XXXX" with the BIOS version prefix from dmidecode (e.g. KWCN or LPCN)
+		// and check if model_kwcn or model_lpcn works best.
+		.ident = "Y9000P_2023_TEMPLATE",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_BIOS_VERSION, "XXXX"),
+		},
+		.driver_data = (void *)&model_kwcn
+	},
+	*/
 	{
 		// Release year: 2021
 		// Generation: 6
@@ -1541,6 +1560,9 @@ static int wmi_exec_ints(const char *guid, u8 instance, u32 method_id,
 	acpi_status status;
 	struct acpi_buffer out_buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 
+	if (debug_output)
+		pr_info("DEBUG: wmi_exec_ints call: GUID=%s, MethodID=%d\n", guid, method_id);
+
 	status = wmi_evaluate_method(guid, instance, method_id, params,
 				     &out_buffer);
 	return acpi_process_buffer_to_ints(guid, method_id, status, &out_buffer,
@@ -1555,6 +1577,9 @@ static int wmi_exec_int(const char *guid, u8 instance, u32 method_id,
 	// set to NULL and call kfree on NULL if next function call fails
 	union acpi_object *out = NULL;
 	int error = 0;
+
+	if (debug_output)
+		pr_info("DEBUG: wmi_exec_int call: GUID=%s, MethodID=%d\n", guid, method_id);
 
 	status = wmi_evaluate_method(guid, instance, method_id, params,
 				     &out_buffer);
@@ -1580,6 +1605,8 @@ static int wmi_exec_int(const char *guid, u8 instance, u32 method_id,
 	}
 
 	*res = out->integer.value;
+	if (debug_output)
+		pr_info("DEBUG: wmi_exec_int result: %lu\n", *res);
 	error = 0;
 
 err:
@@ -1612,6 +1639,9 @@ static int wmi_exec_arg(const char *guid, u8 instance, u32 method_id, void *arg,
 {
 	struct acpi_buffer params;
 	acpi_status status;
+
+	if (debug_output)
+		pr_info("DEBUG: wmi_exec_arg call: GUID=%s, MethodID=%d\n", guid, method_id);
 
 	params.length = arg_size;
 	params.pointer = arg;
@@ -6199,6 +6229,12 @@ static int legion_add(struct platform_device *pdev)
 		dmi_get_system_info(DMI_SYS_VENDOR),
 		dmi_get_system_info(DMI_PRODUCT_NAME),
 		dmi_get_system_info(DMI_BIOS_VERSION));
+
+	if (debug_output) {
+		pr_info("DEBUG: DMI_SYS_VENDOR: %s\n", dmi_get_system_info(DMI_SYS_VENDOR));
+		pr_info("DEBUG: DMI_PRODUCT_NAME: %s\n", dmi_get_system_info(DMI_PRODUCT_NAME));
+		pr_info("DEBUG: DMI_BIOS_VERSION: %s\n", dmi_get_system_info(DMI_BIOS_VERSION));
+	}
 
 	dmi_sys = dmi_first_match(optimistic_allowlist);
 	is_allowed = dmi_sys != NULL;
